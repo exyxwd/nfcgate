@@ -55,8 +55,8 @@ public class RelayMode extends BaseMode {
         // accept only foreign data of other type than we are
         if (isForeign && data.isCard() != mReader) {
             // apply foreign data
-            mManager.applyData(data);
             logMessage("RECEIVED", data.toString(), mode);
+            mManager.applyData(data);
         } else if (!isForeign && data.isCard() == mReader) {
             // send own data over network
             toNetwork(data);
