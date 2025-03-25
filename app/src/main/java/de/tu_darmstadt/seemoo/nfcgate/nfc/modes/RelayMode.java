@@ -6,9 +6,8 @@ import de.tu_darmstadt.seemoo.nfcgate.network.data.NetworkStatus;
 import de.tu_darmstadt.seemoo.nfcgate.util.NfcComm;
 
 import java.io.*;
-import java.util.Date;
-import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.Date;
 
 public class RelayMode extends BaseMode {
     private final boolean mReader;
@@ -59,8 +58,8 @@ public class RelayMode extends BaseMode {
             mManager.applyData(data);
         } else if (!isForeign && data.isCard() == mReader) {
             // send own data over network
-            toNetwork(data);
             logMessage("SENT", data.toString(), mode);
+            toNetwork(data);
         }
     }
 
@@ -70,8 +69,11 @@ public class RelayMode extends BaseMode {
     }
 
     private void logMessage(String direction, String message, String mode) {
-        long timestamp = System.currentTimeMillis();
-        String formattedTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(timestamp));
+        long timeOffset = mManager.getNetwork().getTimeOffset();
+        long adjustedTimestamp = System.currentTimeMillis() - timeOffset;
+
+        Log.d("Correctedtime", " System: " + System.currentTimeMillis() + " Offset: " + timeOffset);
+        String formattedTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(adjustedTimestamp));
         String logEntry = String.format("%s | %s | %s | %s%n\n", formattedTime, direction, mode, message);
 
         File logfile = new File(LOG_DIRECTORY, LOG_FILE_NAME);
