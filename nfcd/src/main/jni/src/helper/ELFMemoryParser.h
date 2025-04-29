@@ -112,44 +112,33 @@ protected:
 
     // adapted from https://stackoverflow.com/a/57099317
     uint32_t symbolCountDTGnuHash(size_t hash_vaddr) {
-        // See https://flapenguin.me/2017/05/10/elf-lookup-dt-gnu-hash/ and
-        // https://sourceware.org/ml/binutils/2006-10/msg00377.html
-        typedef struct
-        {
-            uint32_t nbuckets;
-            uint32_t symoffset;
-            uint32_t bloom_size;
-            uint32_t bloom_shift;
-        } DTGnuHeader;
-
-        auto *header = relocate<DTGnuHeader>(hash_vaddr);
-        const uint8_t* bucketsAddress =
-                (uint8_t *)header + sizeof(DTGnuHeader) + (sizeof(uint64_t) * header->bloom_size);
-
-        // Locate the chain that handles the largest index bucket.
-        uint32_t lastSymbol = 0;
-        uint32_t* bucketAddress = (uint32_t*)bucketsAddress;
-        for (uint32_t i = 0; i < header->nbuckets; ++i) {
-            uint32_t bucket = *bucketAddress;
-            if (lastSymbol < bucket)
-                lastSymbol = bucket;
-
-            bucketAddress++;
+        if (hash_vaddr == 0 || hash_vaddr < mLowestLoad || hash_vaddr > mLowestLoad + mDynamic.size) {
+            LOGE("Invalid GNU hash table address: 0x%zx", hash_vaddr);
+            return 0;
         }
 
-        if (lastSymbol < header->symoffset)
-            return header->symoffset;
+        struct DTGnuHeader {
+            uint32_t nbuckets, symoffset, bloom_size, bloom_shift;
+        };
 
-        // Walk the bucket's chain to add the chain length to the total.
-        const uint8_t* chainBaseAddress = bucketsAddress + (sizeof(uint32_t) * header->nbuckets);
-        for (;;) {
-            uint32_t* chainEntry = (uint32_t*)(chainBaseAddress +
-                    (lastSymbol - header->symoffset) * sizeof(uint32_t));
-            lastSymbol++;
+        auto *header = relocate<DTGnuHeader>(hash_vaddr);
+        if (!header || header->nbuckets == 0 || header->bloom_size == 0 || header->symoffset > 65536) {
+            LOGE("Invalid .gnu.hash header");
+            return 0;
+        }
 
-            // If the low bit is set, this entry is the end of the chain.
-            if (*chainEntry & 1)
-                break;
+        auto *buckets = reinterpret_cast<uint32_t*>((uint8_t*)header + sizeof(DTGnuHeader) + sizeof(uint64_t) * header->bloom_size);
+        uint32_t lastSymbol = 0;
+
+        for (uint32_t i = 0; i < header->nbuckets; ++i) {
+            if (buckets[i] > lastSymbol) lastSymbol = buckets[i];
+        }
+
+        if (lastSymbol < header->symoffset) return header->symoffset;
+
+        auto *chains = reinterpret_cast<uint32_t*>((uint8_t*)buckets + sizeof(uint32_t) * header->nbuckets);
+        while (!(chains[lastSymbol - header->symoffset] & 1)) {
+            ++lastSymbol;
         }
 
         return lastSymbol;
